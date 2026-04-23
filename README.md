@@ -1,4 +1,4 @@
-# HNG14 Stage 1 - Name Profiler API
+# HNG14 Stage 2 - Advanced Name Profiler API with Natural Language Filtering
 
 An API service providing dynamic querying and filtering of demographic profile data (gender, age, age group, and nationality). Data is securely persisted in a PostgreSQL database using the Sequelize ORM, allowing comprehensive fetching and natural language search capabilities.
 
