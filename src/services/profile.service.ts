@@ -14,6 +14,8 @@ import countryNames from "../destPath.json";
 import { Profile } from "../models/profile.model";
 import axios from "axios";
 import { write } from "fast-csv";
+import { cache } from "../lib/cache";
+import { profileQueue } from "../queues/profile.queue";
 
 const GENDER_MAP: Record<string, string> = {
   male: "male",
@@ -48,7 +50,7 @@ const AGE_GROUP_MAP: Record<
   old: { min_age: 60 },
 };
 
-const genderData = async (
+export const genderData = async (
   name: string,
 ): Promise<{
   gender: string;
@@ -73,7 +75,7 @@ const genderData = async (
   }
 };
 
-const ageData = async (
+export const ageData = async (
   name: string,
 ): Promise<{ age: number; age_group: string }> => {
   try {
@@ -100,7 +102,7 @@ const ageData = async (
   }
 };
 
-const nationalityData = async (
+export const nationalityData = async (
   name: string,
 ): Promise<{
   country_id: string;
@@ -217,24 +219,23 @@ export async function addProfileService(
 
   if (typeof name !== "string") throw new AppError("Name is not a string", 400);
 
-  const { gender, gender_probability } = await genderData(name);
-  const { age, age_group } = await ageData(name);
-  const { country_id, country_name, country_probability } =
-    await nationalityData(name);
+  // Check for duplicate name BEFORE queuing (fast DB lookup)
+  const existing = await Profile.findOne({ where: { name } });
+  if (existing)
+    throw new AppError("A profile with that name already exists.", 409);
 
-  const newProfile = await Profile.create({
-    name,
-    gender,
-    gender_probability,
-    age,
-    age_group,
-    country_id,
-    country_name,
-    country_probability,
-    created_at: new Date(),
-  });
-
-  return { newProfile };
+  await profileQueue.add(
+    "enrich-profile",
+    { name },
+    {
+      attempts: 3, // retry up to 3 times on failure
+      backoff: {
+        type: "exponential",
+        delay: 2000, // start with 2 second delay
+      },
+    },
+  );
+  return { name };
 }
 
 // /api/profiles/export
@@ -253,9 +254,9 @@ export function csvExport(req: Request<{}, {}, {}, ExportProfile>) {
 }
 
 // /api/profiles
-export async function filterProfiles(
+export const filterProfiles = async (
   req: Request<{}, {}, {}, ProfileQueryBody>,
-) {
+)=> {
   const user = req.user;
   if (!user) throw new AppError("Unauthorized", 401);
 
@@ -288,6 +289,21 @@ export async function filterProfiles(
   if (invalidQueries.length > 0)
     throw new AppError("Invalid query parameters", 400);
 
+  // ── CACHE CHECK ──────────────────────────────────────────────
+  // Generate a unique key for this exact set of query parameters
+  const cacheKey = cache.key(
+    "profiles:list",
+    req.query as Record<string, unknown>,
+  );
+
+  const cached = await cache.get(cacheKey);
+  if (cached) {
+    // Cache HIT — return immediately without touching the database
+    // This is the "shortcut" — typically <5ms response time
+    return cached;
+  }
+  // ── CACHE MISS — proceed to database ─────────────────────────
+
   const { safePage, safeLimit, options } = filterResponse(req.query);
 
   const { count, rows } = await Profile.findAndCountAll(options);
@@ -306,8 +322,11 @@ export async function filterProfiles(
         : null,
   };
 
-  return { safePage, safeLimit, total_pages, count, rows, links };
-}
+  const result = { safePage, safeLimit, total_pages, count, rows, links };
+
+  await cache.set(cacheKey, result, 300);
+  return result ;
+};
 
 // /api/profiles/search
 export async function ParseSearchQuery(req: Request<{}, {}, {}, SearchQuery>) {

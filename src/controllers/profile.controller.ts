@@ -7,20 +7,16 @@ import {
   filterProfiles,
   ParseSearchQuery,
 } from "../services/profile.service";
-import {
-  ExportProfile,
-  ProfileQueryBody,
-  SearchQuery,
-} from "../types/app.types";
+import { ExportProfile, SearchQuery } from "../types/app.types";
 import { write } from "fast-csv";
 
 // POST /api/profiles/
 export const addProfile = async (req: Request, res: Response) => {
   try {
-    const { newProfile } = await addProfileService(req);
-    return res.status(200).json({
+    const { name } = await addProfileService(req);
+    return res.status(202).json({
       status: "success",
-      data: newProfile,
+      message: `Profile for "${name}" is being created and will appear shortly.`,
     });
   } catch (error) {
     if (error instanceof AppError)
@@ -69,17 +65,16 @@ export const exportProfiles = async (
 
 export const getProfileWithFiltering = async (req: Request, res: Response) => {
   try {
-    const { safePage, safeLimit, total_pages, links, count, rows } =
-      await filterProfiles(req);
+    const result: any = await filterProfiles(req);
 
     return res.status(200).json({
       status: "success",
-      page: safePage,
-      limit: safeLimit,
-      total: count,
-      total_pages,
-      links,
-      data: rows,
+      page:  result.safePage,
+      limit: result.safeLimit,
+      total: result.count,
+      total_pages: result.total_pages,
+      links: result.links,
+      data: result.rows,
     });
   } catch (error) {
     if (error instanceof AppError)
