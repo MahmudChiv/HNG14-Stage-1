@@ -90,5 +90,14 @@ Profile.init(
     sequelize,
     tableName: "profiles",
     timestamps: false,
+    indexes: [
+      { fields: ["gender"] },
+      { fields: ["country_id"] },
+      { fields: ["age_group"] },
+      { fields: ["age"] },
+      { fields: ["created_at"] },
+      { fields: ["gender", "country_id"] },
+      { fields: ["age_group", "country_id"] },
+    ],
   },
 );
