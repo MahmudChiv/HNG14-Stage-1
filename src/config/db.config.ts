@@ -6,6 +6,12 @@ dotenv.config();
 export const sequelize = new Sequelize(process.env.DB_URI!, {
   dialect: "postgres",
   logging: false,
+  pool: {
+    max: 20,
+    min: 5,
+    acquire: 30000,
+    idle: 10000,
+  },
   dialectOptions: {
     ssl: {
       rejectUnauthorized: false,

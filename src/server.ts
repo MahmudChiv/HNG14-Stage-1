@@ -8,8 +8,23 @@ import cookieParser from "cookie-parser";
 import { JwtPayload } from "./types/app.types";
 import { authLimiter, apiLimiter } from "./middlewares/rateLimit.middleware";
 import morgan from "morgan";
+import "./queues/profile.queue";
+import { createClient } from "redis";
+import { RedisStore } from "connect-redis";
 import dotenv from "dotenv";
 dotenv.config();
+
+// Create Redis client for sessions
+const redisClient = createClient({
+  url: process.env.REDIS_URL || 'redis://localhost:6379',
+});
+
+redisClient.connect().catch(console.error);
+
+const redisStore = new RedisStore({
+  client: redisClient,
+  prefix: "session:", // namespace to avoid key collisions
+});
 
 const app = express();
 app.set("trust proxy", 1);
@@ -35,6 +50,7 @@ app.use(morgan(":method :url :status :response-time ms"));
 app.use(cookieParser());
 app.use(
   session({
+    store: redisStore,
     secret: process.env.SESSION_SECRET!,
     resave: false,
     saveUninitialized: false,
